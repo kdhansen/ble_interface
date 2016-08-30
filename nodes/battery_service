@@ -1,0 +1,21 @@
+#!/usr/bin/env python
+
+import rospy
+from sensor_msgs.msg import BatteryState
+import gobject
+
+def battery_level_cb(data):
+    rospy.loginfo('Battery level: %f', data.percentage)
+
+def battery_service():
+    mainloop = gobject.MainLoop()
+    gobject.threads_init()
+    rospy.on_shutdown(mainloop.quit)
+
+    sub = rospy.Subscriber('laptop_charge', BatteryState, battery_level_cb)
+    rospy.init_node('ble_interface_battery')
+
+    mainloop.run()
+
+if __name__ == '__main__':
+    battery_service()

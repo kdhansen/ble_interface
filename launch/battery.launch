@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<launch>
+  <arg name="battery" default="/sys/class/power_supply/BAT0"/>
+  <node pkg="laptop_battery_monitor" type="laptop_battery.py" name="laptop_battery">
+        <param name="acpi_path" type="string" value="$(arg battery)" />
+  </node>
+
+  <node pkg="ble_interface" type="battery_service" name="battery_service" output="screen" />
+</launch>
