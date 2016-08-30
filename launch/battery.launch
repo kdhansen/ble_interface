@@ -6,5 +6,5 @@
         <param name="acpi_path" type="string" value="$(arg battery)" />
   </node>
 
-  <node pkg="ble_interface" type="battery_service" name="battery_service" output="screen" />
+  <node pkg="ble_interface" type="battery_service" name="battery_service"/>
 </launch>

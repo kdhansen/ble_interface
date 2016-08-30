@@ -3,19 +3,97 @@
 import rospy
 from sensor_msgs.msg import BatteryState
 import gobject
+from ble_interface import GattServer
+import dbus
 
-def battery_level_cb(data):
-    rospy.loginfo('Battery level: %f', data.percentage)
+class BatteryService(GattServer.Service):
+    BATTERY_UUID = '180f'
 
-def battery_service():
+    def __init__(self, bus, index):
+        super(BatteryService, self).__init__(bus, index, self.BATTERY_UUID, True)
+        self.add_characteristic(BatteryLevelCharacteristic(bus, 0, self))
+
+
+class BatteryLevelCharacteristic(GattServer.Characteristic):
+    BATTERY_LVL_UUID = '2a19'
+
+    def __init__(self, bus, index, service):
+        super(BatteryLevelCharacteristic, self).__init__(
+                bus, index,
+                self.BATTERY_LVL_UUID,
+                ['read', 'notify'],
+                service)
+        self.notifying = False
+        self.battery_lvl = 100
+
+    def notify_battery_level(self):
+        if not self.notifying:
+            return
+        self.PropertiesChanged(
+                GattServer.GATT_CHRC_IFACE,
+                { 'Value': [dbus.Byte(self.battery_lvl)] }, [])
+
+    def level_cb(self, data):
+        int_percentage = int(data.percentage)
+        if self.battery_lvl != int_percentage:
+            rospy.logdebug('Updated battery level to %d', int_percentage)
+            self.battery_lvl = int_percentage
+            self.notify_battery_level()
+        return
+
+    def ReadValue(self):
+        rospy.logdebug('Battery Level read: ' + repr(self.battery_lvl))
+        return [dbus.Byte(self.battery_lvl)]
+
+    def StartNotify(self):
+        if self.notifying:
+            rospy.logdebug('Already notifying, nothing to do')
+            return
+
+        self.notifying = True
+        self.notify_battery_level()
+
+    def StopNotify(self):
+        if not self.notifying:
+            rospy.logdebug('Not notifying, nothing to do')
+            return
+
+        self.notifying = False
+
+def register_service_cb():
+    rospy.logdebug('GATT service registered')
+
+def register_service_error_cb(error):
+    rospy.logerror('Failed to register service: ' + str(error))
+    rospy.sinal_shutdown('Could not start Bluetooth service.')
+
+def main():
     mainloop = gobject.MainLoop()
     gobject.threads_init()
     rospy.on_shutdown(mainloop.quit)
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 
-    sub = rospy.Subscriber('laptop_charge', BatteryState, battery_level_cb)
-    rospy.init_node('ble_interface_battery')
+    bus = dbus.SystemBus()
+
+    adapter = GattServer.find_adapter(bus)
+    if not adapter:
+        rospy.logerror('GattManager1 interface not found')
+        return
+
+    service_manager = dbus.Interface(
+            bus.get_object(GattServer.BLUEZ_SERVICE_NAME, adapter),
+            GattServer.GATT_MANAGER_IFACE)
+
+    bat_service = BatteryService(bus, 1)
+
+    service_manager.RegisterService(bat_service.get_path(), {},
+                                    reply_handler=register_service_cb,
+                                    error_handler=register_service_error_cb)
+
+    rospy.init_node('ble_interface_battery', log_level=rospy.INFO)
+    sub = rospy.Subscriber('laptop_charge', BatteryState, bat_service.characteristics[0].level_cb)
 
     mainloop.run()
 
 if __name__ == '__main__':
-    battery_service()
+    main()
