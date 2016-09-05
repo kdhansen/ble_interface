@@ -1,0 +1,93 @@
+<Role name="Robot Base">
+    <Service name="Battery Service" type="org.bluetooth.service.battery_service" uuid="180F" >
+        <Characteristic name="Battery Level" type="org.bluetooth.characteristic.battery_level" uuid="2a19">
+            <InformativeText>
+                <Abstract>
+                    The current charge level of a battery. 100% represents fully charged while 0% represents fully discharged.
+                </Abstract>
+            </InformativeText>
+            <Value>
+                <Field name="Level">
+                    <Requirement>Mandatory</Requirement>
+                    <Format>uint8</Format>
+                    <Unit>org.bluetooth.unit.percentage</Unit>
+                    <Minimum>0</Minimum>
+                    <Maximum>100</Maximum>
+                    <Enumerations>
+                        <Reserved start="101" end="255"/>
+                    </Enumerations>
+                </Field>
+            </Value>
+        </Characteristic>
+    </Service>
+    <Service name="Odometry Service" type="dk.aau.kdh.service.odometry" uuid="c2ad5ff9-f58c-4c72-9f01-7c5b3ee1f595" >
+        <Characteristic name="Base Position" type="dk.aau.kdh.characteristic.base_position" uuid="b2c1fa1e-0757-4bff-89e3-b2d379ed0d91">
+            <Value>
+                <Field name="Position on the X axis">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.length.metre</Unit>
+                </Field>
+                <Field name="Position on the Y axis">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.length.metre</Unit>
+                </Field>
+                <Field name="Position on the Z axis">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.length.metre</Unit>
+                </Field>
+            </Value>
+        </Characteristic>
+        <Characteristic name="Base Orientation" type="dk.aau.kdh.characteristic.base_position" uuid="b2c1fa1e-0757-4bff-89e3-b2d379ed0d91">
+            <Value>
+                <Field name="Quaternion X element">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.unitless</Unit>
+                </Field>
+                <Field name="Quaternion Y element">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.unitless</Unit>
+                </Field>
+                <Field name="Quaternion Z element">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.unitless</Unit>
+                </Field>
+                <Field name="Quaternion W element">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.unitless</Unit>
+                </Field>
+            </Value>
+        </Characteristic>
+        <Characteristic name="Base Linear Velocity" type="dk.aau.kdh.characteristic.base_velocity" uuid="74048fa9-69f4-4fe8-b77a-45e69fd4dc8f">
+            <Value>
+                <Field name="Linear velocity in the X direction">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.velocity.metres_per_second</Unit>
+                </Field>
+                <Field name="Linear velocity in the Y direction">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.velocity.metres_per_second</Unit>
+                </Field>
+                <Field name="Linear velocity in the Z direction">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.velocity.metres_per_second</Unit>
+                </Field>
+            </Value>
+        </Characteristic>
+        <Characteristic name="Base Angular Velocity" type="dk.aau.kdh.characteristic.angular_velocity" uuid="350ccac1-d2a7-4021-b432-8658f784dee1">
+            <Value>
+                <Field name="Angular velocity about the X axis">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.angular_velocity.radian_per_second</Unit>
+                </Field>
+                <Field name="Angular velocity about the Y axis">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.angular_velocity.radian_per_second</Unit>
+                </Field>
+                <Field name="Angular velocity about the Z axis">
+                    <Format>float32</Format>
+                    <Unit>org.bluetooth.unit.angular_velocity.radian_per_second</Unit>
+                </Field>
+            </Value>
+        </Characteristic>
+    </Service>
+</Role>
