@@ -2,6 +2,8 @@
 
 import rospy
 from sensor_msgs.msg import BatteryState
+from geometry_msgs.msg import Point
+from geometry_msgs.msg import PoseStamped
 import gobject
 from ble_interface import GattServer
 from ble_interface import BleAdvertisement
@@ -14,6 +16,7 @@ class RobotAdvertisement(BleAdvertisement.Advertisement):
         self.add_service_uuid('180F') # 180F - Battery Service
         self.include_tx_power = True
 
+# The Battery service
 class BatteryService(GattServer.Service):
     BATTERY_UUID = '180f'
 
@@ -68,18 +71,78 @@ class BatteryLevelCharacteristic(GattServer.Characteristic):
 
         self.notifying = False
 
+# The Odometry service
+class OdometryService(GattServer.Service):
+    ODOMETRY_UUID = 'c2ad5ff9-f58c-4c72-9f01-7c5b3ee1f595'
+
+    def __init__(self, bus, index):
+        super(OdometryService, self).__init__(bus, index, self.ODOMETRY_UUID, True)
+        self.add_characteristic(BasePositionCharacteristic(bus, 0, self))
+        # self.add_characteristic(BaseOrientationCharacteristic(bus, 1, self))
+        # self.add_characteristic(BaseLinearVelocityCharacteristic(bus, 2, self))
+        # self.add_characteristic(BaseAngularVelocityCharacteristic(bus, 3, self))
+
+class BasePositionCharacteristic(GattServer.Characteristic):
+    BASE_POSITION_UUID = 'b2c1fa1e-0757-4bff-89e3-b2d379ed0d91'
+
+    def __init__(self, bus, index, service):
+        super(BasePositionCharacteristic, self).__init__(
+                bus, index,
+                self.BASE_POSITION_UUID,
+                ['read', 'notify'],
+                service)
+        self.notifying = False
+        self.position = Point(0,0,0)
+
+    def notify_position(self):
+        if not self.notifying:
+            return
+        self.PropertiesChanged(
+                GattServer.GATT_CHRC_IFACE,
+                { 'Value': [dbus.Int32(self.position.x),
+                            dbus.Int32(self.position.y),
+                            dbus.Int32(self.position.z)] }, [])
+
+    def position_cb(self, data):
+        if self.position != data.pose.position:
+            self.position = data.pose.position
+            rospy.logdebug('Updated position: ' + repr(self.position))
+            self.notify_position()
+        return
+
+    def ReadValue(self):
+        rospy.logdebug('Position read: ' + repr(self.position))
+        return [[dbus.Int32(self.position.x),
+                 dbus.Int32(self.position.y),
+                 dbus.Int32(self.position.z)]]
+
+    def StartNotify(self):
+        if self.notifying:
+            rospy.logdebug('Already notifying, nothing to do')
+            return
+
+        self.notifying = True
+        self.notify_position()
+
+    def StopNotify(self):
+        if not self.notifying:
+            rospy.logdebug('Not notifying, nothing to do')
+            return
+
+        self.notifying = False
+
 def register_service_cb():
     rospy.logdebug('GATT service registered')
 
 def register_service_error_cb(error):
-    rospy.logerror('Failed to register service: ' + str(error))
+    rospy.logerr('Failed to register service: ' + str(error))
     rospy.sinal_shutdown('Could not start Bluetooth service.')
 
 def register_ad_cb():
     rospy.logdebug('Advertisement registered')
 
 def register_ad_error_cb(error):
-    rospy.logerror('Failed to register advertisement: ' + str(error))
+    rospy.logerr('Failed to register advertisement: ' + str(error))
     rospy.sinal_shutdown('Could not advertise Bluetooth service.')
 
 def main():
@@ -93,7 +156,7 @@ def main():
     # Advertize services
     adapter = BleAdvertisement.find_adapter(bus)
     if not adapter:
-        rospy.logerror('LEAdvertisingManager1 interface not found')
+        rospy.logerr('LEAdvertisingManager1 interface not found')
         return
     adapter_props = dbus.Interface(bus.get_object(BleAdvertisement.BLUEZ_SERVICE_NAME, adapter),
                                    "org.freedesktop.DBus.Properties");
@@ -113,8 +176,15 @@ def main():
     service_manager.RegisterService(bat_service.get_path(), {},
                                     reply_handler=register_service_cb,
                                     error_handler=register_service_error_cb)
+
+    odom_service = OdometryService(bus, 2)
+    service_manager.RegisterService(odom_service.get_path(), {},
+                                    reply_handler=register_service_cb,
+                                    error_handler=register_service_error_cb)
+
     rospy.init_node('ble_interface_battery', log_level=rospy.INFO)
-    sub = rospy.Subscriber('laptop_charge', BatteryState, bat_service.characteristics[0].level_cb)
+    laptop_charge_sub = rospy.Subscriber('/laptop_charge', BatteryState, bat_service.characteristics[0].level_cb)
+    odometry_sub = rospy.Subscriber('/odom', PoseStamped, odom_service.characteristics[0].position_cb)
 
     mainloop.run()
 
