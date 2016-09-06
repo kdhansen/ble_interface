@@ -21,7 +21,7 @@
         </Characteristic>
     </Service>
     <Service name="Odometry Service" type="dk.aau.kdh.service.odometry" uuid="c2ad5ff9-f58c-4c72-9f01-7c5b3ee1f595" >
-        <Characteristic name="Base Position" type="dk.aau.kdh.characteristic.base_position" uuid="b2c1fa1e-0757-4bff-89e3-b2d379ed0d91">
+        <Characteristic name="Base Position" type="dk.aau.kdh.characteristic.position" uuid="b2c1fa1e-0757-4bff-89e3-b2d379ed0d91">
             <Value>
                 <Field name="Position on the X axis">
                     <Format>float32</Format>
@@ -37,7 +37,7 @@
                 </Field>
             </Value>
         </Characteristic>
-        <Characteristic name="Base Orientation" type="dk.aau.kdh.characteristic.base_position" uuid="b2c1fa1e-0757-4bff-89e3-b2d379ed0d91">
+        <Characteristic name="Base Orientation" type="dk.aau.kdh.characteristic.orientation" uuid="6f805177-4e54-4bd6-9670-5591c2912875">
             <Value>
                 <Field name="Quaternion X element">
                     <Format>float32</Format>
@@ -57,7 +57,7 @@
                 </Field>
             </Value>
         </Characteristic>
-        <Characteristic name="Base Linear Velocity" type="dk.aau.kdh.characteristic.base_velocity" uuid="74048fa9-69f4-4fe8-b77a-45e69fd4dc8f">
+        <Characteristic name="Base Linear Velocity" type="dk.aau.kdh.characteristic.linear_velocity" uuid="74048fa9-69f4-4fe8-b77a-45e69fd4dc8f">
             <Value>
                 <Field name="Linear velocity in the X direction">
                     <Format>float32</Format>
