@@ -4,6 +4,7 @@ import rospy
 from sensor_msgs.msg import BatteryState
 from geometry_msgs.msg import Point, Quaternion
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
 import gobject
 from ble_interface import GattServer
 from ble_interface import BleAdvertisement
@@ -113,8 +114,8 @@ class BasePositionCharacteristic(GattServer.Characteristic):
             { 'Value': dbus.Array(arr, 'y') }, [])
 
     def position_cb(self, data):
-        if self.position != data.pose.position:
-            self.position = data.pose.position
+        if self.position != data.pose.pose.position:
+            self.position = data.pose.pose.position
             rospy.logdebug('Updated position: ' + repr(self.position))
             self.notify_position()
         return
@@ -172,8 +173,8 @@ class BaseOrientationCharacteristic(GattServer.Characteristic):
  
 
     def orientation_cb(self, data):
-        if self.orientation != data.pose.orientation:
-            self.orientation = data.pose.orientation
+        if self.orientation != data.pose.pose.orientation:
+            self.orientation = data.pose.pose.orientation
             rospy.logdebug('Updated orientation: ' + repr(self.orientation))
             self.notify_orientation()
         return
@@ -253,7 +254,7 @@ def main():
 
     rospy.init_node('ble_interface_battery', log_level=rospy.INFO)
     laptop_charge_sub = rospy.Subscriber('/laptop_charge', BatteryState, bat_service.characteristics[0].level_cb)
-    odometry_sub = rospy.Subscriber('/odom', PoseStamped, odom_service.characteristics[0].position_cb)
+    odometry_sub = rospy.Subscriber('/odom', Odometry, odom_service.characteristics[0].position_cb)
     odometry_sub.impl.add_callback(odom_service.characteristics[1].orientation_cb, None)
 
     mainloop.run()
