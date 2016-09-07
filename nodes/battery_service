@@ -2,7 +2,7 @@
 
 import rospy
 from sensor_msgs.msg import BatteryState
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Quaternion
 from geometry_msgs.msg import PoseStamped
 import gobject
 from ble_interface import GattServer
@@ -14,6 +14,7 @@ class RobotAdvertisement(BleAdvertisement.Advertisement):
     def __init__(self, bus, index):
         super(RobotAdvertisement, self).__init__(bus, index, 'peripheral')
         self.add_service_uuid('180F') # 180F - Battery Service
+        self.add_service_uuid('c2ad5ff9-f58c-4c72-9f01-7c5b3ee1f595') # Odometry service
         self.include_tx_power = True
 
 # The Battery service
@@ -78,7 +79,7 @@ class OdometryService(GattServer.Service):
     def __init__(self, bus, index):
         super(OdometryService, self).__init__(bus, index, self.ODOMETRY_UUID, True)
         self.add_characteristic(BasePositionCharacteristic(bus, 0, self))
-        # self.add_characteristic(BaseOrientationCharacteristic(bus, 1, self))
+        self.add_characteristic(BaseOrientationCharacteristic(bus, 1, self))
         # self.add_characteristic(BaseLinearVelocityCharacteristic(bus, 2, self))
         # self.add_characteristic(BaseAngularVelocityCharacteristic(bus, 3, self))
 
@@ -87,21 +88,29 @@ class BasePositionCharacteristic(GattServer.Characteristic):
 
     def __init__(self, bus, index, service):
         super(BasePositionCharacteristic, self).__init__(
-                bus, index,
-                self.BASE_POSITION_UUID,
-                ['read', 'notify'],
-                service)
+            bus, index,
+            self.BASE_POSITION_UUID,
+            ['read', 'notify'],
+            service)
         self.notifying = False
         self.position = Point(0,0,0)
+        self.add_descriptor(
+            GattServer.CharacteristicUserDescriptionDescriptor(
+                bus, 
+                1, 
+                self,
+                'Robot Position'))
 
     def notify_position(self):
         if not self.notifying:
             return
+        x = int(self.position.x*1000)
+        y = int(self.position.y*1000)
+        z = int(self.position.z*1000)
+        arr = bytearray.fromhex('{:08x}{:08x}{:08x}'.format(x,y,z))
         self.PropertiesChanged(
-                GattServer.GATT_CHRC_IFACE,
-                { 'Value': [dbus.Int32(self.position.x),
-                            dbus.Int32(self.position.y),
-                            dbus.Int32(self.position.z)] }, [])
+            GattServer.GATT_CHRC_IFACE,
+            { 'Value': dbus.Array(arr, 'y') }, [])
 
     def position_cb(self, data):
         if self.position != data.pose.position:
@@ -112,9 +121,9 @@ class BasePositionCharacteristic(GattServer.Characteristic):
 
     def ReadValue(self):
         rospy.logdebug('Position read: ' + repr(self.position))
-        return [[dbus.Int32(self.position.x),
-                 dbus.Int32(self.position.y),
-                 dbus.Int32(self.position.z)]]
+        return [[dbus.Double(self.position.x),
+                 dbus.Double(self.position.y),
+                 dbus.Double(self.position.z)]]
 
     def StartNotify(self):
         if self.notifying:
@@ -131,19 +140,79 @@ class BasePositionCharacteristic(GattServer.Characteristic):
 
         self.notifying = False
 
+class BaseOrientationCharacteristic(GattServer.Characteristic):
+    BASE_ORIENTATION_UUID = '6f805177-4e54-4bd6-9670-5591c2912875'
+
+    def __init__(self, bus, index, service):
+        super(BaseOrientationCharacteristic, self).__init__(
+                bus, index,
+                self.BASE_ORIENTATION_UUID,
+                ['read', 'notify'],
+                service)
+        self.notifying = False
+        self.orientation = Quaternion(1,0,0,0)
+        self.add_descriptor(
+            GattServer.CharacteristicUserDescriptionDescriptor(
+                bus, 
+                1, 
+                self,
+                'Robot Orientation'))
+
+    def notify_orientation(self):
+        if not self.notifying:
+            return
+        x = int(self.orientation.x * 1000000000)
+        y = int(self.orientation.y * 1000000000)
+        z = int(self.orientation.z * 1000000000)
+        w = int(self.orientation.w * 1000000000)
+        arr = bytearray.fromhex('{:08x}{:08x}{:08x}{:08x}'.format(x,y,z,w))
+        self.PropertiesChanged(
+            GattServer.GATT_CHRC_IFACE,
+            { 'Value': dbus.Array(arr, 'y') }, [])
+ 
+
+    def orientation_cb(self, data):
+        if self.orientation != data.pose.orientation:
+            self.orientation = data.pose.orientation
+            rospy.logdebug('Updated orientation: ' + repr(self.orientation))
+            self.notify_orientation()
+        return
+
+    def ReadValue(self):
+        rospy.logdebug('Orientation read: ' + repr(self.orientation))
+        return [[dbus.Double(self.orientation.x),
+                 dbus.Double(self.orientation.y),
+                 dbus.Double(self.orientation.z),
+                 dbus.Double(self.orientation.w)]]
+
+    def StartNotify(self):
+        if self.notifying:
+            rospy.logdebug('Already notifying, nothing to do')
+            return
+
+        self.notifying = True
+        self.notify_orientation()
+
+    def StopNotify(self):
+        if not self.notifying:
+            rospy.logdebug('Not notifying, nothing to do')
+            return
+
+        self.notifying = False
+
 def register_service_cb():
     rospy.logdebug('GATT service registered')
 
 def register_service_error_cb(error):
     rospy.logerr('Failed to register service: ' + str(error))
-    rospy.sinal_shutdown('Could not start Bluetooth service.')
+    rospy.signal_shutdown('Could not start Bluetooth service.')
 
 def register_ad_cb():
     rospy.logdebug('Advertisement registered')
 
 def register_ad_error_cb(error):
     rospy.logerr('Failed to register advertisement: ' + str(error))
-    rospy.sinal_shutdown('Could not advertise Bluetooth service.')
+    rospy.signal_shutdown('Could not advertise Bluetooth service.')
 
 def main():
     mainloop = gobject.MainLoop()
@@ -185,6 +254,7 @@ def main():
     rospy.init_node('ble_interface_battery', log_level=rospy.INFO)
     laptop_charge_sub = rospy.Subscriber('/laptop_charge', BatteryState, bat_service.characteristics[0].level_cb)
     odometry_sub = rospy.Subscriber('/odom', PoseStamped, odom_service.characteristics[0].position_cb)
+    odometry_sub.impl.add_callback(odom_service.characteristics[1].orientation_cb, None)
 
     mainloop.run()
 
