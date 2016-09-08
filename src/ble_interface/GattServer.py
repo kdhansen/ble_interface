@@ -415,7 +415,7 @@ class TestCharacteristic(Characteristic):
         self.value = []
         self.add_descriptor(TestDescriptor(bus, 0, self))
         self.add_descriptor(
-                CharacteristicUserDescriptionDescriptor(bus, 1, self))
+                CharacteristicUserDescriptionDescriptor(bus, 1, self, 'Test Characteristic'))
 
     def ReadValue(self):
         print('TestCharacteristic Read: ' + repr(self.value))
@@ -487,7 +487,7 @@ class TestEncryptCharacteristic(Characteristic):
         self.value = []
         self.add_descriptor(TestEncryptDescriptor(bus, 2, self))
         self.add_descriptor(
-                CharacteristicUserDescriptionDescriptor(bus, 3, self))
+                CharacteristicUserDescriptionDescriptor(bus, 3, self, 'Test encrypted characteristic'))
 
     def ReadValue(self):
         print('TestCharacteristic Read: ' + repr(self.value))

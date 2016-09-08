@@ -14,8 +14,9 @@ class RobotAdvertisement(BleAdvertisement.Advertisement):
 
     def __init__(self, bus, index):
         super(RobotAdvertisement, self).__init__(bus, index, 'peripheral')
-        self.add_service_uuid('180F') # 180F - Battery Service
-        self.add_service_uuid('c2ad5ff9-f58c-4c72-9f01-7c5b3ee1f595') # Odometry service
+        # self.add_service_uuid('180F') # 180F - Battery Service
+        # self.add_service_uuid('c2ad5ff9-f58c-4c72-9f01-7c5b3ee1f595') # Odometry service
+        # self.add_service_uuid('12345678-1234-5678-1234-56789abcdef0')
         self.include_tx_power = True
 
 # The Battery service
@@ -95,6 +96,7 @@ class BasePositionCharacteristic(GattServer.Characteristic):
             service)
         self.notifying = False
         self.position = Point(0,0,0)
+        self._value_initialized = False
         self.add_descriptor(
             GattServer.CharacteristicUserDescriptionDescriptor(
                 bus, 1, self, 'Robot Position'))
@@ -124,8 +126,14 @@ class BasePositionCharacteristic(GattServer.Characteristic):
         return
 
     def ReadValue(self):
+        if not self._value_initialized:
+            self._value_initialized = True
+            bl = self.position_to_bytelist()
+            self.PropertiesChanged(
+                GattServer.GATT_CHRC_IFACE,
+                { 'Value': dbus.Array(bl, 'y') }, [])
         rospy.logdebug('Position read: ' + repr(self.position))
-        return position_to_bytelist()
+        return dbus.Array(self.position_to_bytelist(), signature='y')
 
     def StartNotify(self):
         if self.notifying:
@@ -189,7 +197,7 @@ class BaseOrientationCharacteristic(GattServer.Characteristic):
 
     def ReadValue(self):
         rospy.logdebug('Orientation read: ' + repr(self.orientation))
-        return orientation_to_bytelist()
+        return dbus.Array(self.orientation_to_bytelist(), signature='y')
 
     def StartNotify(self):
         if self.notifying:
@@ -253,6 +261,7 @@ def main():
     service_manager = dbus.Interface(
             bus.get_object(GattServer.BLUEZ_SERVICE_NAME, adapter),
             GattServer.GATT_MANAGER_IFACE)
+
     bat_service = BatteryService(bus, 1)
     service_manager.RegisterService(bat_service.get_path(), {},
                                     reply_handler=register_service_cb,
@@ -263,10 +272,12 @@ def main():
                                     reply_handler=register_service_cb,
                                     error_handler=register_service_error_cb)
 
-    rospy.init_node('ble_interface_battery', log_level=rospy.INFO)
+    rospy.init_node('ble_interface_battery', log_level=rospy.DEBUG)
     laptop_charge_sub = rospy.Subscriber('/laptop_charge', BatteryState, bat_service.characteristics[0].level_cb)
     odometry_sub = rospy.Subscriber('/odom', Odometry, odom_service.characteristics[0].position_cb)
     odometry_sub.impl.add_callback(odom_service.characteristics[1].orientation_cb, None)
+
+
 
     mainloop.run()
 
