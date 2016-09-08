@@ -97,21 +97,24 @@ class BasePositionCharacteristic(GattServer.Characteristic):
         self.position = Point(0,0,0)
         self.add_descriptor(
             GattServer.CharacteristicUserDescriptionDescriptor(
-                bus, 
-                1, 
-                self,
-                'Robot Position'))
+                bus, 1, self, 'Robot Position'))
+
+    def position_to_bytelist(self):
+        x = int(self.position.x*1000)
+        x = bytelist_from_int(x, 4)
+        y = int(self.position.y*1000)
+        y = bytelist_from_int(y, 4)
+        z = int(self.position.z*1000)
+        z = bytelist_from_int(z, 4)
+        return x+y+z
 
     def notify_position(self):
         if not self.notifying:
             return
-        x = int(self.position.x*1000)
-        y = int(self.position.y*1000)
-        z = int(self.position.z*1000)
-        arr = bytearray.fromhex('{:08x}{:08x}{:08x}'.format(x,y,z))
+        bl = self.position_to_bytelist()
         self.PropertiesChanged(
             GattServer.GATT_CHRC_IFACE,
-            { 'Value': dbus.Array(arr, 'y') }, [])
+            { 'Value': dbus.Array(bl, 'y') }, [])
 
     def position_cb(self, data):
         if self.position != data.pose.pose.position:
@@ -122,9 +125,7 @@ class BasePositionCharacteristic(GattServer.Characteristic):
 
     def ReadValue(self):
         rospy.logdebug('Position read: ' + repr(self.position))
-        return [[dbus.Double(self.position.x),
-                 dbus.Double(self.position.y),
-                 dbus.Double(self.position.z)]]
+        return position_to_bytelist()
 
     def StartNotify(self):
         if self.notifying:
@@ -154,23 +155,30 @@ class BaseOrientationCharacteristic(GattServer.Characteristic):
         self.orientation = Quaternion(1,0,0,0)
         self.add_descriptor(
             GattServer.CharacteristicUserDescriptionDescriptor(
-                bus, 
-                1, 
+                bus,
+                1,
                 self,
                 'Robot Orientation'))
+
+    def orientation_to_bytelist(self):
+        x = int(self.orientation.x * 1000000000)
+        x = bytelist_from_int(x, 4)
+        y = int(self.orientation.y * 1000000000)
+        y = bytelist_from_int(y, 4)
+        z = int(self.orientation.z * 1000000000)
+        z = bytelist_from_int(z, 4)
+        w = int(self.orientation.w * 1000000000)
+        w = bytelist_from_int(w, 4)
+        return x+y+z+w
 
     def notify_orientation(self):
         if not self.notifying:
             return
-        x = int(self.orientation.x * 1000000000)
-        y = int(self.orientation.y * 1000000000)
-        z = int(self.orientation.z * 1000000000)
-        w = int(self.orientation.w * 1000000000)
-        arr = bytearray.fromhex('{:08x}{:08x}{:08x}{:08x}'.format(x,y,z,w))
+        bl = self.orientation_to_bytelist()
         self.PropertiesChanged(
             GattServer.GATT_CHRC_IFACE,
-            { 'Value': dbus.Array(arr, 'y') }, [])
- 
+            { 'Value': dbus.Array(bl, 'y') }, [])
+
 
     def orientation_cb(self, data):
         if self.orientation != data.pose.pose.orientation:
@@ -181,10 +189,7 @@ class BaseOrientationCharacteristic(GattServer.Characteristic):
 
     def ReadValue(self):
         rospy.logdebug('Orientation read: ' + repr(self.orientation))
-        return [[dbus.Double(self.orientation.x),
-                 dbus.Double(self.orientation.y),
-                 dbus.Double(self.orientation.z),
-                 dbus.Double(self.orientation.w)]]
+        return orientation_to_bytelist()
 
     def StartNotify(self):
         if self.notifying:
@@ -214,6 +219,12 @@ def register_ad_cb():
 def register_ad_error_cb(error):
     rospy.logerr('Failed to register advertisement: ' + str(error))
     rospy.signal_shutdown('Could not advertise Bluetooth service.')
+
+def bytelist_from_int(number, num_bytes):
+    # Make sure it is an integer
+    number = int(number)
+    # Construct the list by shifting one byte at a time.
+    return [(number>>(8*i))&0xff for i in range(num_bytes-1,-1,-1)]
 
 def main():
     mainloop = gobject.MainLoop()
