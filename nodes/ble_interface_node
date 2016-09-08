@@ -16,7 +16,6 @@ class RobotAdvertisement(BleAdvertisement.Advertisement):
         super(RobotAdvertisement, self).__init__(bus, index, 'peripheral')
         # self.add_service_uuid('180F') # 180F - Battery Service
         # self.add_service_uuid('c2ad5ff9-f58c-4c72-9f01-7c5b3ee1f595') # Odometry service
-        # self.add_service_uuid('12345678-1234-5678-1234-56789abcdef0')
         self.include_tx_power = True
 
 # The Battery service
@@ -96,7 +95,6 @@ class BasePositionCharacteristic(GattServer.Characteristic):
             service)
         self.notifying = False
         self.position = Point(0,0,0)
-        self._value_initialized = False
         self.add_descriptor(
             GattServer.CharacteristicUserDescriptionDescriptor(
                 bus, 1, self, 'Robot Position'))
@@ -126,12 +124,6 @@ class BasePositionCharacteristic(GattServer.Characteristic):
         return
 
     def ReadValue(self):
-        if not self._value_initialized:
-            self._value_initialized = True
-            bl = self.position_to_bytelist()
-            self.PropertiesChanged(
-                GattServer.GATT_CHRC_IFACE,
-                { 'Value': dbus.Array(bl, 'y') }, [])
         rospy.logdebug('Position read: ' + repr(self.position))
         return dbus.Array(self.position_to_bytelist(), signature='y')
 
@@ -214,6 +206,84 @@ class BaseOrientationCharacteristic(GattServer.Characteristic):
 
         self.notifying = False
 
+# The Navigation service
+class NavigationService(GattServer.Service):
+    NAVIGATION_UUID = '4b150dea-e847-453e-89b0-ef28a0de1764'
+
+    def __init__(self, bus, index):
+        super(NavigationService, self).__init__(bus, index, self.NAVIGATION_UUID, True)
+        self.add_characteristic(GoalPositionCharacteristic(bus, 0, self))
+
+class GoalPositionCharacteristic(GattServer.Characteristic):
+    GOAL_POSITION_UUID = '0e2e60ec-d7e3-4be6-9a62-b77f238e3d67'
+
+    def __init__(self, bus, index, service):
+        super(GoalPositionCharacteristic, self).__init__(
+            bus, index,
+            self.GOAL_POSITION_UUID,
+            ['read', 'write', 'notify'],
+            service)
+        self.notifying = False
+        self.position = Point(0,0,0)
+        self.add_descriptor(
+            GattServer.CharacteristicUserDescriptionDescriptor(
+                bus, 1, self, 'Goal Position'))
+        self.pub = rospy.Publisher('move_base_simple/goal', PoseStamped, queue_size=1)
+
+    def position_to_bytelist(self):
+        x = int(self.position.x*1000)
+        x = bytelist_from_int(x, 4)
+        y = int(self.position.y*1000)
+        y = bytelist_from_int(y, 4)
+        z = int(self.position.z*1000)
+        z = bytelist_from_int(z, 4)
+        return x+y+z
+
+    def notify_position(self):
+        if not self.notifying:
+            return
+        bl = self.position_to_bytelist()
+        self.PropertiesChanged(
+            GattServer.GATT_CHRC_IFACE,
+            { 'Value': dbus.Array(bl, 'y') }, [])
+
+    def position_cb(self, data):
+        if self.position != data.pose.pose.position:
+            self.position = data.pose.pose.position
+            rospy.logdebug('Updated position: ' + repr(self.position))
+            self.notify_position()
+        return
+
+    def ReadValue(self):
+        rospy.logdebug('Goal Position read: ' + repr(self.position))
+        return dbus.Array(self.position_to_bytelist(), signature='y')
+
+    def WriteValue(self, value):
+        self.position.x = int_from_bytelist(value, 0, 4) / 1000.
+        self.position.y = int_from_bytelist(value, 4, 8) / 1000.
+        self.position.z = int_from_bytelist(value, 8, 12) / 1000.
+        rospy.logdebug('Goal Position set to' + repr(self.position))
+        ps = PoseStamped()
+        ps.header.stamp = rospy.Time.now()
+        ps.header.frame_id = "map"
+        ps.pose.position = self.position
+        self.pub.publish(ps)
+
+    def StartNotify(self):
+        if self.notifying:
+            rospy.logdebug('Already notifying, nothing to do')
+            return
+
+        self.notifying = True
+        self.notify_position()
+
+    def StopNotify(self):
+        if not self.notifying:
+            rospy.logdebug('Not notifying, nothing to do')
+            return
+
+        self.notifying = False
+
 def register_service_cb():
     rospy.logdebug('GATT service registered')
 
@@ -232,7 +302,18 @@ def bytelist_from_int(number, num_bytes):
     # Make sure it is an integer
     number = int(number)
     # Construct the list by shifting one byte at a time.
-    return [(number>>(8*i))&0xff for i in range(num_bytes-1,-1,-1)]
+    byte_list = [(number>>(8*i))&0xff for i in range(num_bytes-1,-1,-1)]
+    return byte_list
+
+def int_from_bytelist(byte_list, from_byte, to_byte):
+    the_int = 0
+    for i, b in enumerate(range(to_byte-1, from_byte-1, -1)):
+        the_int += byte_list[b] * (256**i)
+    # Two's complement
+    if (byte_list[from_byte] & 0x80) != 0:
+        the_int = the_int - (1 << (to_byte - from_byte)*8)
+    return the_int
+
 
 def main():
     mainloop = gobject.MainLoop()
@@ -269,6 +350,11 @@ def main():
 
     odom_service = OdometryService(bus, 2)
     service_manager.RegisterService(odom_service.get_path(), {},
+                                    reply_handler=register_service_cb,
+                                    error_handler=register_service_error_cb)
+
+    nav_service = NavigationService(bus, 3)
+    service_manager.RegisterService(nav_service.get_path(), {},
                                     reply_handler=register_service_cb,
                                     error_handler=register_service_error_cb)
 

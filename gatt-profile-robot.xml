@@ -103,4 +103,49 @@
             </Value>
         </Characteristic>
     </Service>
+    <Service name="Navigation Service" type="dk.aau.kdh.service.navigation" uuid="4b150dea-e847-453e-89b0-ef28a0de1764" >
+        <Characteristic name="Goal Position" type="dk.aau.kdh.characteristic.position" uuid="0e2e60ec-d7e3-4be6-9a62-b77f238e3d67">
+            <Value>
+                <Field name="Position on the X axis">
+                    <Format>sint32</Format>
+                    <Unit>org.bluetooth.unit.length.metre</Unit>
+                    <Exponent>-3</Exponent>
+                </Field>
+                <Field name="Position on the Y axis">
+                    <Format>sint32</Format>
+                    <Unit>org.bluetooth.unit.length.metre</Unit>
+                    <Exponent>-3</Exponent>
+                </Field>
+                <Field name="Position on the Z axis">
+                    <Format>sint32</Format>
+                    <Unit>org.bluetooth.unit.length.metre</Unit>
+                    <Exponent>-3</Exponent>
+                </Field>
+            </Value>
+        </Characteristic>
+        <Characteristic name="Goal Orientation" type="dk.aau.kdh.characteristic.orientation" uuid="27a07006-c8ff-49d9-8927-196e9296306b">
+            <Value>
+                <Field name="Quaternion X element">
+                    <Format>sint32</Format>
+                    <Unit>org.bluetooth.unit.unitless</Unit>
+                    <Exponent>-9</Exponent>
+                </Field>
+                <Field name="Quaternion Y element">
+                    <Format>sint32</Format>
+                    <Unit>org.bluetooth.unit.unitless</Unit>
+                    <Exponent>-9</Exponent>
+                </Field>
+                <Field name="Quaternion Z element">
+                    <Format>sint32</Format>
+                    <Unit>org.bluetooth.unit.unitless</Unit>
+                    <Exponent>-9</Exponent>
+                </Field>
+                <Field name="Quaternion W element">
+                    <Format>sint32</Format>
+                    <Unit>org.bluetooth.unit.unitless</Unit>
+                    <Exponent>-9</Exponent>
+                </Field>
+            </Value>
+        </Characteristic>
+    </Service>
 </Role>
