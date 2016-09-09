@@ -62,7 +62,6 @@ class BatteryLevelCharacteristic(GattServer.Characteristic):
         if self.notifying:
             rospy.logdebug('Already notifying, nothing to do')
             return
-
         self.notifying = True
         self.notify_battery_level()
 
@@ -70,7 +69,6 @@ class BatteryLevelCharacteristic(GattServer.Characteristic):
         if not self.notifying:
             rospy.logdebug('Not notifying, nothing to do')
             return
-
         self.notifying = False
 
 # The Odometry service
@@ -131,7 +129,6 @@ class BasePositionCharacteristic(GattServer.Characteristic):
         if self.notifying:
             rospy.logdebug('Already notifying, nothing to do')
             return
-
         self.notifying = True
         self.notify_position()
 
@@ -139,7 +136,6 @@ class BasePositionCharacteristic(GattServer.Characteristic):
         if not self.notifying:
             rospy.logdebug('Not notifying, nothing to do')
             return
-
         self.notifying = False
 
 class BaseOrientationCharacteristic(GattServer.Characteristic):
@@ -195,7 +191,6 @@ class BaseOrientationCharacteristic(GattServer.Characteristic):
         if self.notifying:
             rospy.logdebug('Already notifying, nothing to do')
             return
-
         self.notifying = True
         self.notify_orientation()
 
@@ -203,7 +198,6 @@ class BaseOrientationCharacteristic(GattServer.Characteristic):
         if not self.notifying:
             rospy.logdebug('Not notifying, nothing to do')
             return
-
         self.notifying = False
 
 # The Navigation service
@@ -212,7 +206,16 @@ class NavigationService(GattServer.Service):
 
     def __init__(self, bus, index):
         super(NavigationService, self).__init__(bus, index, self.NAVIGATION_UUID, True)
+        self.posestamped = PoseStamped()
+        self.posestamped.header.frame_id = "map"
+        self.pub = rospy.Publisher('move_base_simple/goal', PoseStamped, queue_size=1)
         self.add_characteristic(GoalPositionCharacteristic(bus, 0, self))
+        self.add_characteristic(GoalOrientationCharacteristic(bus, 1, self))
+
+    def publish(self):
+        self.posestamped.header.stamp = rospy.Time.now()
+        self.pub.publish(self.posestamped)
+
 
 class GoalPositionCharacteristic(GattServer.Characteristic):
     GOAL_POSITION_UUID = '0e2e60ec-d7e3-4be6-9a62-b77f238e3d67'
@@ -224,11 +227,11 @@ class GoalPositionCharacteristic(GattServer.Characteristic):
             ['read', 'write', 'notify'],
             service)
         self.notifying = False
-        self.position = Point(0,0,0)
+        self.service = service
+        self.position = service.posestamped.pose.position
         self.add_descriptor(
             GattServer.CharacteristicUserDescriptionDescriptor(
                 bus, 1, self, 'Goal Position'))
-        self.pub = rospy.Publisher('move_base_simple/goal', PoseStamped, queue_size=1)
 
     def position_to_bytelist(self):
         x = int(self.position.x*1000)
@@ -247,13 +250,6 @@ class GoalPositionCharacteristic(GattServer.Characteristic):
             GattServer.GATT_CHRC_IFACE,
             { 'Value': dbus.Array(bl, 'y') }, [])
 
-    def position_cb(self, data):
-        if self.position != data.pose.pose.position:
-            self.position = data.pose.pose.position
-            rospy.logdebug('Updated position: ' + repr(self.position))
-            self.notify_position()
-        return
-
     def ReadValue(self):
         rospy.logdebug('Goal Position read: ' + repr(self.position))
         return dbus.Array(self.position_to_bytelist(), signature='y')
@@ -262,18 +258,13 @@ class GoalPositionCharacteristic(GattServer.Characteristic):
         self.position.x = int_from_bytelist(value, 0, 4) / 1000.
         self.position.y = int_from_bytelist(value, 4, 8) / 1000.
         self.position.z = int_from_bytelist(value, 8, 12) / 1000.
-        rospy.logdebug('Goal Position set to' + repr(self.position))
-        ps = PoseStamped()
-        ps.header.stamp = rospy.Time.now()
-        ps.header.frame_id = "map"
-        ps.pose.position = self.position
-        self.pub.publish(ps)
+        rospy.logdebug('Goal Position set to: ' + repr(self.position))
+        self.service.publish()
 
     def StartNotify(self):
         if self.notifying:
             rospy.logdebug('Already notifying, nothing to do')
             return
-
         self.notifying = True
         self.notify_position()
 
@@ -281,7 +272,69 @@ class GoalPositionCharacteristic(GattServer.Characteristic):
         if not self.notifying:
             rospy.logdebug('Not notifying, nothing to do')
             return
+        self.notifying = False
 
+class GoalOrientationCharacteristic(GattServer.Characteristic):
+    GOAL_ORIENTATION_UUID = '27a07006-c8ff-49d9-8927-196e9296306b'
+
+    def __init__(self, bus, index, service):
+        super(GoalOrientationCharacteristic, self).__init__(
+                bus, index,
+                self.GOAL_ORIENTATION_UUID,
+                ['read', 'write', 'notify'],
+                service)
+        self.notifying = False
+        self.service = service
+        self.orientation = service.posestamped.pose.orientation
+        self.add_descriptor(
+            GattServer.CharacteristicUserDescriptionDescriptor(
+                bus,
+                1,
+                self,
+                'Goal Orientation'))
+
+    def orientation_to_bytelist(self):
+        x = int(self.orientation.x * 1000000000)
+        x = bytelist_from_int(x, 4)
+        y = int(self.orientation.y * 1000000000)
+        y = bytelist_from_int(y, 4)
+        z = int(self.orientation.z * 1000000000)
+        z = bytelist_from_int(z, 4)
+        w = int(self.orientation.w * 1000000000)
+        w = bytelist_from_int(w, 4)
+        return x+y+z+w
+
+    def notify_orientation(self):
+        if not self.notifying:
+            return
+        bl = self.orientation_to_bytelist()
+        self.PropertiesChanged(
+            GattServer.GATT_CHRC_IFACE,
+            { 'Value': dbus.Array(bl, 'y') }, [])
+
+    def ReadValue(self):
+        rospy.logdebug('Goal orientation read: ' + repr(self.orientation))
+        return dbus.Array(self.orientation_to_bytelist(), signature='y')
+
+    def WriteValue(self, value):
+        self.orientation.x = int_from_bytelist(value, 0, 4) / 1000.
+        self.orientation.y = int_from_bytelist(value, 4, 8) / 1000.
+        self.orientation.z = int_from_bytelist(value, 8, 12) / 1000.
+        self.orientation.w = int_from_bytelist(value, 12, 16) / 1000.
+        rospy.logdebug('Goal orientation set to ' + repr(self.orientation))
+        self.service.publish()
+
+    def StartNotify(self):
+        if self.notifying:
+            rospy.logdebug('Already notifying, nothing to do')
+            return
+        self.notifying = True
+        self.notify_orientation()
+
+    def StopNotify(self):
+        if not self.notifying:
+            rospy.logdebug('Not notifying, nothing to do')
+            return
         self.notifying = False
 
 def register_service_cb():
