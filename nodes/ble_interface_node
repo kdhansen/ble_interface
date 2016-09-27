@@ -235,6 +235,12 @@ def bytelist_from_int(number, num_bytes):
     return [(number>>(8*i))&0xff for i in range(num_bytes-1,-1,-1)]
 
 def main():
+    # Initialize node to get access to ROS logging.
+    rospy.init_node('ble_interface_battery', log_level=rospy.DEBUG)
+
+    # Construct the event loop. Usually, we would use ROS' spin function.
+    # but the dbus library needs to use the GObject.MainLoop. Luckily, this
+    # works fine with rospy.
     mainloop = gobject.MainLoop()
     gobject.threads_init()
     rospy.on_shutdown(mainloop.quit)
@@ -272,12 +278,10 @@ def main():
                                     reply_handler=register_service_cb,
                                     error_handler=register_service_error_cb)
 
-    rospy.init_node('ble_interface_battery', log_level=rospy.DEBUG)
+    # Populate Node
     laptop_charge_sub = rospy.Subscriber('/laptop_charge', BatteryState, bat_service.characteristics[0].level_cb)
     odometry_sub = rospy.Subscriber('/odom', Odometry, odom_service.characteristics[0].position_cb)
     odometry_sub.impl.add_callback(odom_service.characteristics[1].orientation_cb, None)
-
-
 
     mainloop.run()
 
