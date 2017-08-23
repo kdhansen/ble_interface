@@ -5,10 +5,12 @@ from sensor_msgs.msg import BatteryState
 from geometry_msgs.msg import Point, Quaternion
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
+from people_msgs.msg import PositionMeasurement, PositionMeasurementArray
 import gobject
 from ble_interface import GattServer
 from ble_interface import BleAdvertisement
 import dbus
+from math import sqrt, atan2, pi
 
 class RobotAdvertisement(BleAdvertisement.Advertisement):
 
@@ -214,6 +216,75 @@ class BaseOrientationCharacteristic(GattServer.Characteristic):
 
         self.notifying = False
 
+# The People service
+class PeopleService(GattServer.Service):
+    PEOPLE_UUID = 'd3b06ab8-8a3c-40ca-bb06-5c3623650896'
+
+    def __init__(self, bus, index):
+        super(PeopleService, self).__init__(bus, index, self.PEOPLE_UUID, True)
+        self.people_array = PositionMeasurementArray()
+        self.current_person = PositionMeasurement()
+        self.current_person_valid = False
+        self.person_position_characteristic = PersonPositionCharacteristic(
+            bus, 0, self)
+        self.add_characteristic(self.person_position_characteristic)
+
+    def person_position_array_cb(self, data):
+        self.people_array = data
+        try:
+            self.current_person = next(
+                p for p in self.people_array.people if p.name == self.current_person.name)
+            self.person_position_characteristic.notify_person_position()
+            self.current_person_valid = True
+        except StopIteration:
+            self.current_person_valid = False
+        return
+
+class PersonPositionCharacteristic(GattServer.Characteristic):
+    PERSON_POSITION_UUID = 'b52fffd8-88eb-4baa-9e99-88aafdf89480'
+
+    def __init__(self, bus, index, service):
+        super(PersonPositionCharacteristic, self).__init__(
+            bus, index, self.PERSON_POSITION_UUID, ['read', 'notify'], service)
+        self.notifying = False
+        self.service = service
+        self.add_descriptor(
+            GattServer.CharacteristicUserDescriptionDescriptor(
+                bus, 1, self, 'Relative Position of Person'))
+
+    def point_to_polar_bytelist(self):
+        position = self.service.current_person.position
+        dist = sqrt(position.x**2 + position.y**2)
+        dist = int(dist * 100)
+        dist = bytelist_from_int(dist, 2)
+        angle = atan2(position.y, position.y) * 180 / pi
+        angle = int(angle * 100)
+        angle = bytelist_from_int(angle, 2)
+        return dist + angle
+
+    def notify_person_position(self):
+        if self.notifying:
+            bl = self.point_to_polar_bytelist()
+            self.PropertiesChanged(
+                GattServer.GATT_CHRC_IFACE, {'Value': dbus.Array(bl, 'y')}, [])
+
+    def ReadValue(self):
+        rospy.logdebug('Person Position read: ' + repr(self.orientation))
+        return dbus.Array(self.point_to_polar_bytelist(), signature='y')
+
+    def StartNotify(self):
+        if self.notifying:
+            rospy.logdebug('Already notifying, nothing to do')
+        else:
+            self.notifying = True
+            self.notify_person_position()
+
+    def StopNotify(self):
+        if self.notifying:
+            self.notifying = False
+        else:
+            rospy.logdebug('Not notifying, nothing to do')
+
 def register_service_cb():
     rospy.logdebug('GATT service registered')
 
@@ -248,7 +319,7 @@ def main():
 
     bus = dbus.SystemBus()
 
-    # Advertize services
+    # Advertize BLE services
     adapter = BleAdvertisement.find_adapter(bus)
     if not adapter:
         rospy.logerr('LEAdvertisingManager1 interface not found')
@@ -263,7 +334,7 @@ def main():
                                      reply_handler=register_ad_cb,
                                      error_handler=register_ad_error_cb)
 
-    # Service
+    # Put the services on the Dbus for Bluez to handle them.
     service_manager = dbus.Interface(
             bus.get_object(GattServer.BLUEZ_SERVICE_NAME, adapter),
             GattServer.GATT_MANAGER_IFACE)
@@ -278,10 +349,23 @@ def main():
                                     reply_handler=register_service_cb,
                                     error_handler=register_service_error_cb)
 
-    # Populate Node
-    laptop_charge_sub = rospy.Subscriber('/laptop_charge', BatteryState, bat_service.characteristics[0].level_cb)
-    odometry_sub = rospy.Subscriber('/odom', Odometry, odom_service.characteristics[0].position_cb)
-    odometry_sub.impl.add_callback(odom_service.characteristics[1].orientation_cb, None)
+    people_service = PeopleService(bus, 3)
+    service_manager.RegisterService(people_service.get_path(), {},
+                                    reply_handler=register_service_cb,
+                                    error_handler=register_service_error_cb)
+
+    # Populate ROS Node
+    laptop_charge_sub = rospy.Subscriber(
+        '/laptop_charge', BatteryState,
+        bat_service.characteristics[0].level_cb)
+    odometry_sub = rospy.Subscriber(
+        '/odom', Odometry,
+        odom_service.characteristics[0].position_cb)
+    odometry_sub.impl.add_callback(
+        odom_service.characteristics[1].orientation_cb, None)
+    people_sub = rospy.Subscriber(
+        '/people_tracker_measurements', PositionMeasurementArray,
+        people_service.person_position_array_cb)
 
     mainloop.run()
 

@@ -103,4 +103,55 @@
             </Value>
         </Characteristic>
     </Service>
+    <Service name="People Service" type="dk.aau.kdh.service.people" uuid="d3b06ab8-8a3c-40ca-bb06-5c3623650896" >
+        <Characteristic name="Relative Position of Person" type="dk.aau.kdh.characteristic.person_position" uuid="b52fffd8-88eb-4baa-9e99-88aafdf89480">
+            <InformativeText>
+                <Abstract>Relative position of a person with regards to the robot.</Abstract>
+                <Summary>The relative position of a person with regards to the robot. The position is given in polar coordinates.</Summary>
+            </InformativeText>
+            <Value>
+                <Field name="Distance">
+                    <InformativeText>Unit is in meters with a resolution of 1 cm.</InformativeText>
+                    <Requirement>Mandatory</Requirement>
+                    <Format>uint16</Format>
+                    <Unit>org.bluetooth.unit.length.meter</Unit>
+                    <DecimalExponent>-2</DecimalExponent>
+                </Field>
+                <Field name="Heading">
+                    <InformativeText>Unit is in degrees with a resolution of 1/100</InformativeText>
+                    <Requirement>Mandatory</Requirement>
+                    <Format>uint16</Format>
+                    <Unit>org.bluetooth.unit.plane_angle.degree</Unit>
+                    <DecimalExponent>-2</DecimalExponent>
+                </Field>
+            </Value>
+        </Characteristic>
+        <Characteristic name="Person ID" type="dk.aau.kdh.characteristic.person_id" uuid="2c972f56-4df5-4fab-8fc7-f558f1e718af">
+            <InformativeText>
+                <Abstract>Unique identification of detected person.</Abstract>
+                <Summary>The unique number pertains to people moving within the robot sensor range. Thus the same person is assigned a new ID when exiting and entering the range again.</Summary>
+            </InformativeText>
+            <Value>
+                <Format>uint16</Format>
+            </Value>
+        </Characteristic>
+        <Characteristic name="Valid Person" type="dk.aau.kdh.characteristic.valid_person" uuid="65bd5274-c110-403f-a8cd-76c375248ef0">
+            <InformativeText>
+                <Abstract>Indication of whether the report of the current person is valid..</Abstract>
+                <Summary>The robot base may report a stale report of a person, if the person left the sensor range and the client did not iterate to the next person on the list.</Summary>
+            </InformativeText>
+            <Value>
+                <Format>boolean</Format>
+            </Value>
+        </Characteristic>
+        <Characteristic name="Iterate Person" type="dk.aau.kdh.characteristic.iterate_person" uuid="965bc822-254d-48ef-a26d-9e91b24e2f80">
+            <InformativeText>
+                <Abstract>Iterate given number of positions in the list of people.</Abstract>
+                <Summary>The robot base may have a record of several people in its sensor range. The client can iterate through the list by writing an offset to this characteristic. Negative offsets are permitted.</Summary>
+            </InformativeText>
+            <Value>
+                <Format>sint8</Format>
+            </Value>
+        </Characteristic>
+    </Service>
 </Role>
