@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import rospy
+from std_msgs.msg import Float32
+from std_srvs.srv import SetBool, SetBoolResponse
 from sensor_msgs.msg import BatteryState
 from geometry_msgs.msg import Point, Quaternion
 from geometry_msgs.msg import PoseStamped
@@ -285,6 +287,108 @@ class PersonPositionCharacteristic(GattServer.Characteristic):
         else:
             rospy.logdebug('Not notifying, nothing to do')
 
+# The Interaction Service
+class InteractionService(GattServer.Service):
+    INTERACTION_UUID = 'dcaa40f9-aa61-4ee7-b1ea-875e11a0832d'
+
+    def __init__(self, bus, index):
+        super(InteractionService, self).__init__(bus, index, self.INTERACTION_UUID, True)
+        self.add_characteristic(InteractionProbabilityCharacteristic(bus, 0, self))
+        self.add_characteristic(InteractionModeCharacteristic(bus, 1, self))
+
+
+class InteractionProbabilityCharacteristic(GattServer.Characteristic):
+    INTERACTION_PROB_UUID = 'a01132e2-ef2b-45aa-8ad3-91a941624e26'
+
+    def __init__(self, bus, index, service):
+        super(InteractionProbabilityCharacteristic, self).__init__(
+                bus, index,
+                self.INTERACTION_PROB_UUID,
+                ['read', 'notify'],
+                service)
+        self.notifying = False
+        self.prob_lvl = 0
+
+    def notify_probability_level(self):
+        if not self.notifying:
+            return
+        self.PropertiesChanged(
+                GattServer.GATT_CHRC_IFACE,
+                { 'Value': [dbus.Byte(self.prob_lvl)] }, [])
+
+    def level_cb(self, data):
+        int_percentage = int(data.percentage)
+        if self.prob_lvl != int_percentage:
+            rospy.logdebug('Updated interaction probability level to %d', int_percentage)
+            self.prob_lvl = int_percentage
+            self.notify_probability_level()
+        return
+
+    def ReadValue(self):
+        rospy.logdebug('Interaction probability level read: ' + repr(self.prob_lvl))
+        return [dbus.Byte(self.prob_lvl)]
+
+    def StartNotify(self):
+        if self.notifying:
+            rospy.logdebug('Already notifying, nothing to do')
+            return
+        self.notifying = True
+        self.notify_probability_level()
+
+    def StopNotify(self):
+        if not self.notifying:
+            rospy.logdebug('Not notifying, nothing to do')
+            return
+        self.notifying = False
+
+class InteractionModeCharacteristic(GattServer.Characteristic):
+    INTERACTION_MODE_UUID = 'dc2ecad2-7b92-4cda-85c6-da190ce82f61'
+
+    def __init__(self, bus, index, service):
+        super(InteractionModeCharacteristic, self).__init__(
+                bus, index,
+                self.INTERACTION_MODE_UUID,
+                ['write', 'read', 'notify'],
+                service)
+        self.notifying = False
+        self.interaction_mode = False
+
+    def notify_interaction_mode(self):
+        if not self.notifying:
+            return
+        self.PropertiesChanged(
+                GattServer.GATT_CHRC_IFACE,
+                { 'Value': [dbus.Boolean(self.interaction_mode)] }, [])
+
+    def mode_cb(self, msg):
+        self.WriteValue(msg.data)
+        return
+
+    def ReadValue(self):
+        rospy.logdebug('Interaction mode read: ' + repr(self.interaction_mode))
+        return [dbus.Boolean(self.interaction_mode)]
+
+    def WriteValue(self, value):
+        new_mode = bool(value)
+        if self.interaction_mode != new_mode:
+            self.interaction_mode = new_mode
+            rospy.logdebug('Interaction mode set to: ' + repr(new_mode))
+            self.notify_interaction_mode()
+        return
+
+    def StartNotify(self):
+        if self.notifying:
+            rospy.logdebug('Already notifying, nothing to do')
+            return
+        self.notifying = True
+        self.notify_interaction_mode()
+
+    def StopNotify(self):
+        if not self.notifying:
+            rospy.logdebug('Not notifying, nothing to do')
+            return
+        self.notifying = False
+
 def register_service_cb():
     rospy.logdebug('GATT service registered')
 
@@ -335,9 +439,9 @@ def main():
                                      error_handler=register_ad_error_cb)
 
     # Put the services on the Dbus for Bluez to handle them.
-    service_manager = dbus.Interface(
-            bus.get_object(GattServer.BLUEZ_SERVICE_NAME, adapter),
-            GattServer.GATT_MANAGER_IFACE)
+    service_manager = dbus.Interface(bus.get_object(GattServer.BLUEZ_SERVICE_NAME,
+                                                    adapter),
+                                     GattServer.GATT_MANAGER_IFACE)
 
     bat_service = BatteryService(bus, 1)
     service_manager.RegisterService(bat_service.get_path(), {},
@@ -354,18 +458,29 @@ def main():
                                     reply_handler=register_service_cb,
                                     error_handler=register_service_error_cb)
 
+    interaction_service = InteractionService(bus, 4)
+    service_manager.RegisterService(interaction_service.get_path(), {},
+                                    reply_handler=register_service_cb,
+                                    error_handler=register_service_error_cb)
+
     # Populate ROS Node
-    laptop_charge_sub = rospy.Subscriber(
-        '/laptop_charge', BatteryState,
-        bat_service.characteristics[0].level_cb)
-    odometry_sub = rospy.Subscriber(
-        '/odom', Odometry,
-        odom_service.characteristics[0].position_cb)
-    odometry_sub.impl.add_callback(
-        odom_service.characteristics[1].orientation_cb, None)
-    people_sub = rospy.Subscriber(
-        '/people_tracker_measurements', PositionMeasurementArray,
-        people_service.person_position_array_cb)
+    laptop_charge_sub = rospy.Subscriber('/laptop_charge',
+                                         BatteryState,
+                                         bat_service.characteristics[0].level_cb)
+    odometry_sub = rospy.Subscriber('/odom',
+                                    Odometry,
+                                    odom_service.characteristics[0].position_cb)
+    odometry_sub.impl.add_callback(odom_service.characteristics[1].orientation_cb,
+                                   None)
+    people_sub = rospy.Subscriber('/people_tracker_measurements',
+                                  PositionMeasurementArray,
+                                  people_service.person_position_array_cb)
+    interaction_prob_sub = rospy.Subscriber('/interaction_probability',
+                                            Float32,
+                                            interaction_service.characteristics[0].level_cb)
+    interaction_mode_service = rospy.Service('set_interaction_mode',
+                                             SetBool,
+                                             interaction_service.characteristics[1].mode_cb)
 
     mainloop.run()
 

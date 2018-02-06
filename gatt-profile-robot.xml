@@ -154,4 +154,33 @@
             </Value>
         </Characteristic>
     </Service>
+    <Service name="Interaction" type="dk.aau.kdh.service.interaction" uuid="dcaa40f9-aa61-4ee7-b1ea-875e11a0832d" >
+        <Characteristic name="Probability of Interaction" type="dk.aau.kdh.characteristic.interaction_probability" uuid="a01132e2-ef2b-45aa-8ad3-91a941624e26">
+            <InformativeText>
+                <Abstract>The probability that a person is interacting with the robot.</Abstract>
+                <Summary>Using it's sensors, the robot determines the probabillity of whether an interaction is ongoing.</Summary>
+            </InformativeText>
+            <Value>
+                <Field name="Probability">
+                    <Requirement>Mandatory</Requirement>
+                    <Format>uint8</Format>
+                    <Unit>org.bluetooth.unit.percentage</Unit>
+                    <Minimum>0</Minimum>
+                    <Maximum>100</Maximum>
+                    <Enumerations>
+                        <Reserved start="101" end="255"/>
+                    </Enumerations>
+                </Field>
+            </Value>
+        </Characteristic>
+        <Characteristic name="Interaction Mode" type="dk.aau.kdh.characteristic.interaction_mode" uuid="dc2ecad2-7b92-4cda-85c6-da190ce82f61">
+            <InformativeText>
+                <Abstract>Control to set the robot into or out of interaction mode.</Abstract>
+                <Summary>The client can set the robot to interaction mode. If the robot deems it unsafe, it can exit automatically.</Summary>
+            </InformativeText>
+            <Value>
+                <Format>boolean</Format>
+            </Value>
+        </Characteristic>
+    </Service>
 </Role>
